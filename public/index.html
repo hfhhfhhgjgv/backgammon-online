@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>تخته نرد آنلاین</title>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <style>
+        body { background: #1a472a; font-family: Tahoma; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .container { background: #8b5a2b; padding: 20px; border-radius: 48px; }
+        canvas { display: block; margin: 0 auto; border-radius: 16px; background: #e8d5b5; width: 100%; height: auto; }
+        .panel { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        button { background: #e67e22; border: none; padding: 10px 20px; border-radius: 40px; color: white; font-weight: bold; cursor: pointer; }
+        input { padding: 10px; border-radius: 30px; border: none; text-align: center; }
+        .status { background: #000000aa; color: gold; padding: 10px; border-radius: 20px; text-align: center; margin-top: 15px; }
+    </style>
+</head>
+<body>
+<div>
+    <div class="container">
+        <canvas id="gameCanvas" width="700" height="450"></canvas>
+        <div class="panel">
+            <input type="text" id="roomCode" placeholder="کد اتاق">
+            <button id="createBtn">ساخت اتاق</button>
+            <button id="joinBtn">ورود به اتاق</button>
+            <button id="rollBtn" style="display:none">🎲 تاس</button>
+        </div>
+        <div class="status" id="statusMsg">لطفاً اتاق بساز یا وارد شو</div>
+    </div>
+</div>
+<script>
+    const socket = io();
+    let canvas = document.getElementById('gameCanvas');
+    let ctx = canvas.getContext('2d');
+    let currentRoom = null, myPlayerId = null, gameState = null;
+
+    socket.on('roomCreated', (data) => {
+        currentRoom = data.roomCode;
+        myPlayerId = data.playerId;
+        document.getElementById('statusMsg').innerHTML = `✅ اتاق ساخته شد! کد: ${currentRoom}<br>به دوستت بگو این کد رو وارد کنه`;
+        document.getElementById('rollBtn').style.display = 'inline-block';
+    });
+    socket.on('gameReady', (msg) => { document.getElementById('statusMsg').innerHTML = msg; });
+    socket.on('updateGame', (state) => { gameState = state; drawBoard(state); updateTurn(state); });
+    
+    function updateTurn(state) {
+        if (!state) return;
+        let idx = state.players.indexOf(myPlayerId);
+        let myTurn = (state.currentPlayer === 1 && idx === 0) || (state.currentPlayer === -1 && idx === 1);
+        if (myTurn && !state.rolled && !state.gameOver) {
+            document.getElementById('statusMsg').innerHTML = '🎯 نوبت توئه! تاس بنداز';
+            document.getElementById('rollBtn').style.display = 'inline-block';
+        } else if (state.gameOver) {
+            document.getElementById('statusMsg').innerHTML = `🏆 برنده: ${state.winner}`;
+            document.getElementById('rollBtn').style.display = 'none';
+        } else {
+            document.getElementById('statusMsg').innerHTML = `⏳ نوبت ${state.currentPlayer === 1 ? 'سفید' : 'قرمز'} ... صبر کن`;
+            document.getElementById('rollBtn').style.display = 'none';
+        }
+    }
+    
+    function drawBoard(state) {
+        if (!state) return;
+        ctx.fillStyle = "#e8d5b5";
+        ctx.fillRect(0,0,700,450);
+        for(let i=0;i<24;i++){
+            let x = i*29.16;
+            ctx.fillStyle = "#b58a4a";
+            ctx.fillRect(x, 190, 27, 70);
+            let count = state.board[i];
+            let cx = x+13;
+            let cy = (i<12)? 160 : 260;
+            let color = count>0? "white":"#b00030";
+            for(let j=0;j<Math.min(Math.abs(count),5);j++){
+                ctx.beginPath();
+                ctx.arc(cx, cy + j*14, 10, 0, Math.PI*2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+    }
+    
+    document.getElementById('createBtn').onclick = () => {
+        let code = document.getElementById('roomCode').value.trim();
+        if(!code) code = Math.floor(1000+Math.random()*9000);
+        socket.emit('createRoom', code.toString());
+    };
+    document.getElementById('joinBtn').onclick = () => {
+        let code = document.getElementById('roomCode').value.trim();
+        if(code) socket.emit('joinRoom', code);
+    };
+    document.getElementById('rollBtn').onclick = () => {
+        if(currentRoom) socket.emit('rollDice', currentRoom);
+    };
+</script>
+</body>
+</html>
